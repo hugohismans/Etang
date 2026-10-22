@@ -76,9 +76,18 @@ export class Water {
 
   private cssW = 1;
   private cssH = 1;
+  /** Partie visible de la grille (cellules). */
   private simW = 0;
   private simH = 0;
   private simShort = 1;
+  /** Marge hors écran (cellules) de chaque côté ; la grille fait simW + 2·margin. */
+  private margin = 0;
+  private get gridW(): number {
+    return this.simW + 2 * this.margin;
+  }
+  private get gridH(): number {
+    return this.simH + 2 * this.margin;
+  }
 
   private lastTime: number | null = null;
   private acc = 0;
@@ -340,10 +349,12 @@ export class Water {
     const longCells = Math.round(shortCells * longRatio);
     const w = aspect >= 1 ? longCells : shortCells;
     const h = aspect >= 1 ? shortCells : longCells;
-    if (w === this.simW && h === this.simH && this.state) return;
+    const m = Math.max(4, Math.round(wc.offscreenMargin * shortCells));
+    if (w === this.simW && h === this.simH && m === this.margin && this.state) return;
 
-    const a = createTarget(gl, w, h, this.formats.state, gl.NEAREST);
-    const b = createTarget(gl, w, h, this.formats.state, gl.NEAREST);
+    // Grille d'état = écran + marges ; carte de normales = écran seulement.
+    const a = createTarget(gl, w + 2 * m, h + 2 * m, this.formats.state, gl.NEAREST);
+    const b = createTarget(gl, w + 2 * m, h + 2 * m, this.formats.state, gl.NEAREST);
     const n = createTarget(gl, w, h, this.formats.normal, gl.LINEAR);
     if (!a || !b || !n) {
       deleteTarget(gl, a);
@@ -357,6 +368,7 @@ export class Water {
     this.normals = n;
     this.simW = w;
     this.simH = h;
+    this.margin = m;
     this.simShort = shortCells;
 
     gl.bindVertexArray(this.vao);
@@ -373,7 +385,7 @@ export class Water {
         gl.uniform2i(this.progCopy.u.uSrcSize ?? null, src.w, src.h);
         gl.bindTexture(gl.TEXTURE_2D, src.tex);
         gl.bindFramebuffer(gl.FRAMEBUFFER, dst.fbo);
-        gl.viewport(0, 0, w, h);
+        gl.viewport(0, 0, dst.w, dst.h);
         gl.drawArrays(gl.TRIANGLES, 0, 3);
       }
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
@@ -393,8 +405,8 @@ export class Water {
     const count = Math.min(this.pending.length, MAX_DROPS_PER_STEP);
     const drops = this.pending.splice(0, count);
     drops.forEach((d, i) => {
-      this.dropBuf[i * 4] = d.x * this.simW;
-      this.dropBuf[i * 4 + 1] = (1 - d.y) * this.simH;
+      this.dropBuf[i * 4] = this.margin + d.x * this.simW;
+      this.dropBuf[i * 4 + 1] = this.margin + (1 - d.y) * this.simH;
       this.dropBuf[i * 4 + 2] = Math.max(1.5, config.drop.radius * d.size * this.simShort);
       this.dropBuf[i * 4 + 3] = config.drop.amplitude * d.strength;
     });
@@ -403,16 +415,16 @@ export class Water {
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, src.tex);
     gl.uniform1i(u.uState ?? null, 0);
-    gl.uniform2i(u.uSize ?? null, this.simW, this.simH);
+    gl.uniform2i(u.uSize ?? null, this.gridW, this.gridH);
     gl.uniform1f(u.uC2 ?? null, c2);
     gl.uniform1f(u.uDamping ?? null, damp);
-    gl.uniform1f(u.uSpongeCells ?? null, config.water.spongeWidth * this.simShort);
-    gl.uniform1f(u.uSpongeDamping ?? null, config.water.spongeDamping);
+    gl.uniform1f(u.uMarginCells ?? null, this.margin);
+    gl.uniform1f(u.uSpongeStrength ?? null, config.water.spongeStrength);
     gl.uniform1i(u.uDropCount ?? null, count);
     gl.uniform4fv(u.uDrops ?? null, this.dropBuf);
 
     gl.bindFramebuffer(gl.FRAMEBUFFER, dst.fbo);
-    gl.viewport(0, 0, this.simW, this.simH);
+    gl.viewport(0, 0, this.gridW, this.gridH);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     this.state = [dst, src];
@@ -428,7 +440,8 @@ export class Water {
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.state[0].tex);
     gl.uniform1i(u.uState ?? null, 0);
-    gl.uniform2i(u.uSize ?? null, this.simW, this.simH);
+    gl.uniform2i(u.uSize ?? null, this.gridW, this.gridH);
+    gl.uniform2i(u.uOffset ?? null, this.margin, this.margin);
     gl.uniform1f(u.uAlpha ?? null, alpha);
     // Le bruit tourne dans une fenêtre de temps bornée pour garder la précision float.
     gl.uniform1f(u.uTime ?? null, this.time % 10000);

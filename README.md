@@ -139,6 +139,7 @@ filtre) dans [`src/engine/moods.ts`](src/engine/moods.ts). Les plus parlantes :
 | `timeline.*` | frise de boucle (`enabled: false` pour la masquer) |
 | `omen.*` | lueur d'annonce avant chaque retour (`gain: 0` pour la retirer) |
 | `render.maxPixelRatio`, `water.simShortSide` | performances sur mobile |
+| `water.offscreenMargin`, `spongeStrength` | marge invisible où les ondes s'éteignent (plus large = plus coûteux) |
 
 Si on change `water.waveSpeed` ou la résolution de simulation, vérifier
 `crossings.speedFactor` : il cale l'étincelle sur la crête visible (la grille
@@ -170,9 +171,13 @@ public/                manifeste, icônes, service worker
 1. **Simulation** (`sim.frag`) : grille de hauteurs (256 cellules sur le petit
    côté, indépendante de l'écran), équation d'onde discrète
    `h[n+1] = (2h[n] − h[n−1] + c²∇²h[n]) · amortissement`, en ping-pong entre deux
-   textures, laplacien isotrope à 9 points (anneaux bien ronds), bordure
-   absorbante (pas d'écho sur les bords). Une goutte ajoute une bosse à `h[n]`
-   et `h[n−1]` : l'eau se relâche et l'anneau naît tout seul.
+   textures, laplacien isotrope à 9 points (anneaux bien ronds). Une goutte
+   ajoute une bosse à `h[n]` et `h[n−1]` : l'eau se relâche et l'anneau naît
+   tout seul. La grille déborde de l'écran (`water.offscreenMargin`, 0,3 de
+   chaque côté) : les ondes sortent et s'éteignent dans cette marge invisible,
+   où la vitesse de l'eau est freinée de plus en plus fort. Rien ne rebondit,
+   l'étang paraît infini (mesuré : ~1 % de l'onde revient, contre 10 à 30 %
+   avec une bordure amortissante sur l'écran).
 2. **Normales** (`normals.frag`) : pente + houle de fond très lente, à la
    résolution de la simulation, dans une texture filtrable. L'affichage
    interpole entre les deux derniers pas : fluide à 60, 90 ou 120 Hz.
@@ -214,8 +219,8 @@ plus ancienne est éteinte par une rampe de 60 ms.
 
 Quand un choix n'était pas couvert, j'ai pris l'option la plus lente et la plus douce :
 
-- La goutte **creuse** l'eau, comme une vraie goutte ; les bords **absorbent**
-  les ondes plutôt que de les renvoyer.
+- La goutte **creuse** l'eau, comme une vraie goutte ; les ondes **sortent**
+  de l'écran sans rebondir, comme si l'étang continuait au-delà.
 - Les micro-ridules ne touchent **que** le reflet de lune ; la houle de fond
   est presque imperceptible.
 - **Tessiture** : bandes horizontales plutôt que verticales. En portrait, la

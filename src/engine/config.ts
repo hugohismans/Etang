@@ -45,10 +45,20 @@ export const config = {
     courant2: 0.3,
     /** Fraction d'amplitude qui subsiste après 1 seconde (amortissement global). */
     damping: 0.72,
-    /** Largeur de la bordure absorbante, en unités d'étang. Évite les rebonds sur les bords. */
-    spongeWidth: 0.12,
-    /** Amortissement par pas tout au bord de l'écran (1 = aucun, 0.9 = absorbe fort). */
-    spongeDamping: 0.93,
+    /**
+     * Marge de simulation hors de l'écran, de chaque côté (unités d'étang).
+     * Les ondes y continuent leur course puis s'y éteignent progressivement :
+     * l'étang paraît infini, rien ne rebondit sur les bords de l'écran.
+     * Plus large = absorption plus douce, mais calcul plus coûteux.
+     */
+    offscreenMargin: 0.3,
+    /**
+     * Freinage de la vitesse de l'eau par pas, au bord extérieur de la marge
+     * (profil quadratique depuis 0 au bord de l'écran). Trop fort = la marge
+     * renvoie elle-même une partie de l'onde ; trop faible = l'onde atteint le
+     * bord extérieur et revient. Mesuré : ~1 % de retour avec 0.3 / 0.1.
+     */
+    spongeStrength: 0.1,
     /** Nombre maximal de pas de simulation par image (garde-fou sur appareil lent). */
     maxStepsPerFrame: 6,
     /** Amortissement (fraction restante après 1 s) au plus fort d'un « vider l'étang ». */

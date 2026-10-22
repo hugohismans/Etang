@@ -14,8 +14,8 @@ uniform sampler2D uState;
 uniform ivec2 uSize;
 uniform float uC2;
 uniform float uDamping;       // facteur par pas
-uniform float uSpongeCells;   // largeur de la bordure absorbante, en cellules
-uniform float uSpongeDamping; // facteur supplémentaire tout au bord
+uniform float uMarginCells;   // marge hors écran (cellules), où les ondes s'éteignent
+uniform float uSpongeStrength; // amortissement par pas au bord extérieur
 
 uniform int uDropCount;
 uniform vec4 uDrops[MAX_DROPS]; // xy = position (cellules), z = rayon (cellules), w = amplitude
@@ -24,7 +24,7 @@ in vec2 vUv;
 out vec4 outState;
 
 vec2 load(ivec2 p) {
-  // Bord réfléchissant (Neumann) ; la bordure absorbante empêche l'écho visible.
+  // Bord de la grille réfléchissant (Neumann) : il est hors écran, et la marge absorbante éteint les ondes avant qu'elles l'atteignent.
   p = clamp(p, ivec2(0), uSize - 1);
   return decodeState(texelFetch(uState, p, 0));
 }
@@ -39,17 +39,20 @@ void main() {
               + load(p + ivec2(1, -1)).x + load(p + ivec2(-1, -1)).x;
   float lap = (4.0 * edges + diags - 20.0 * c.x) / 6.0;
 
-  float h = 2.0 * c.x - c.y + uC2 * lap;
   float prev = c.x;
 
-  // Bordure absorbante : amortissement qui croît en douceur vers les bords.
+  // Zone absorbante, entièrement hors de l'écran : l'amortissement part de
+  // zéro au bord de l'écran et croît en s² jusqu'au bord de la grille. Une
+  // montée aussi progressive, sur plusieurs longueurs d'onde, ne renvoie
+  // presque rien : l'onde s'éteint comme si elle continuait au loin.
   vec2 fp = vec2(p) + 0.5;
   vec2 sz = vec2(uSize);
   float edge = min(min(fp.x, sz.x - fp.x), min(fp.y, sz.y - fp.y));
-  float s = 1.0 - smoothstep(0.0, uSpongeCells, edge);
-  float damp = uDamping * mix(1.0, uSpongeDamping, s * s);
-  h *= damp;
-  prev = mix(prev, prev * damp, s); // amortit aussi la mémoire dans la bordure
+  float s = clamp(1.0 - edge / max(uMarginCells, 1.0), 0.0, 1.0);
+  // On freine la vitesse de l'eau (h[n] − h[n−1]) plutôt que sa hauteur :
+  // freiner la hauteur crée un « mur » mou qui renvoie une partie de l'onde.
+  float vel = (c.x - c.y) * exp(-uSpongeStrength * s * s);
+  float h = (c.x + vel + uC2 * lap) * uDamping;
 
   // Injection des gouttes : bosse en cloche (cosinus surélevé, support compact).
   for (int i = 0; i < MAX_DROPS; i++) {

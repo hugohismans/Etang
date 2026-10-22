@@ -7,7 +7,8 @@
 // interpolation, le front avancerait par à-coups.
 
 uniform sampler2D uState;
-uniform ivec2 uSize;
+uniform ivec2 uSize;     // taille de la grille complète (marges comprises)
+uniform ivec2 uOffset;   // début de la partie visible dans la grille
 uniform float uAlpha;
 uniform float uTime;
 uniform float uPondPerCell;  // taille d'une cellule en unités d'étang
@@ -20,7 +21,7 @@ in vec2 vUv;
 out vec4 outNormal;
 
 float H(ivec2 p) {
-  p = clamp(p, ivec2(0), uSize - 1);
+  p = clamp(p + uOffset, ivec2(0), uSize - 1);
   vec2 s = decodeState(texelFetch(uState, p, 0));
   return mix(s.y, s.x, uAlpha);
 }
