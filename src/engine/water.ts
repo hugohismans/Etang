@@ -11,7 +11,7 @@
  * (comme les événements pointeur). Les distances physiques sont exprimées en
  * « unités d'étang » : le petit côté de l'écran vaut 1.
  */
-import { config, MAX_DROPS_PER_STEP, MAX_FLASHES } from './config';
+import { config, MAX_DROPS_PER_STEP, MAX_FLASHES, MAX_OMENS } from './config';
 import { createProgram, createTarget, deleteTarget, type Program, type Target, type TexFormat } from './gl';
 import type { Palette } from './moods';
 
@@ -91,6 +91,8 @@ export class Water {
   private readonly dropBuf = new Float32Array(MAX_DROPS_PER_STEP * 4);
   private readonly flashBuf = new Float32Array(MAX_FLASHES * 4);
   private readonly flashStyleBuf = new Float32Array(MAX_FLASHES * 4);
+  private readonly omenBuf = new Float32Array(MAX_OMENS * 4);
+  private omenCount = 0;
   /** Amortissement supplémentaire temporaire (« vider l'étang ») : fin et durée. */
   private settleUntil = -1;
   private settleDuration = 1;
@@ -140,6 +142,24 @@ export class Water {
   /** Programme une goutte. x, y dans [0, 1], origine en haut à gauche. */
   drop(x: number, y: number, strength = 1, size = 1): void {
     this.pending.push({ x, y, strength, size });
+  }
+
+  /**
+   * Lueurs d'annonce de l'image courante (remplacent les précédentes).
+   * Position dans le même repère que `drop`, intensité ≥ 0.
+   */
+  setOmens(omens: ReadonlyArray<{ x: number; y: number; intensity: number }>): void {
+    const { w, h } = this.pondSize;
+    const n = Math.min(omens.length, MAX_OMENS);
+    for (let i = 0; i < n; i++) {
+      const o = omens[i];
+      if (!o) continue;
+      this.omenBuf[i * 4] = (o.x - 0.5) * w;
+      this.omenBuf[i * 4 + 1] = (0.5 - o.y) * h;
+      this.omenBuf[i * 4 + 2] = o.intensity;
+      this.omenBuf[i * 4 + 3] = config.omen.radius;
+    }
+    this.omenCount = n;
   }
 
   /** Allume un flash lumineux. Même repère que `drop`. */
@@ -274,6 +294,7 @@ export class Water {
     const defines = {
       MAX_DROPS: MAX_DROPS_PER_STEP,
       MAX_FLASHES,
+      MAX_OMENS,
       SIM_PACKED: this.formats.tier === 'packed',
       NORMAL_PACKED: this.formats.tier === 'packed',
     };
@@ -474,6 +495,8 @@ export class Water {
     gl.uniform4fv(u.uFlashes ?? null, this.flashBuf);
     gl.uniform4fv(u.uFlashStyles ?? null, this.flashStyleBuf);
     gl.uniform4f(u.uFlashShape ?? null, f.radius, f.growth, f.decay, f.attack);
+    gl.uniform1i(u.uOmenCount ?? null, this.omenCount);
+    gl.uniform4fv(u.uOmens ?? null, this.omenBuf);
     const ln = this.lanes;
     const lc = config.lanes;
     gl.uniform3fv(u.uLaneDir ?? null, ln.dir ?? [0, 0, 0]);

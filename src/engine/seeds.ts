@@ -38,7 +38,7 @@ export interface DropEvent {
   merged: boolean;
 }
 
-interface Seed {
+export interface Seed {
   id: number;
   x: number;
   y: number;
@@ -88,7 +88,7 @@ export class Seeds {
   /** Un toucher : impact immédiat, et une nouvelle graine qui reviendra sur la grille. */
   tap(x: number, y: number, now: number): DropEvent {
     const c = config.seeds;
-    this.add({
+    const seed = this.add({
       x,
       y,
       volume: c.tapVolume,
@@ -97,6 +97,7 @@ export class Seeds {
       next: this.gridAfter(now + c.loopDuration),
       size: 1,
     });
+    this.drift(seed);
     return { time: now, x, y, volume: c.tapVolume, level: 0, size: 1, kind: 'tap', merged: false };
   }
 
@@ -156,19 +157,30 @@ export class Seeds {
     return k[0] === 0 ? [1, 0] : [0, 1];
   }
 
-  /** Un retour de graine : dérive, fusion, engendrement, déclin. */
-  private pass(s: Seed): DropEvent | null {
+  /**
+   * Dérive : marche aléatoire en unités d'étang. Avec keepNote, elle est
+   * confinée à l'axe perpendiculaire à celui des hauteurs : la note ne change
+   * pas. Elle est tirée juste après une chute, pour la suivante : la position
+   * affichée par la lueur d'annonce est donc toujours celle de la prochaine chute.
+   */
+  private drift(s: Seed): void {
     const c = config.seeds;
-    const t = s.next;
     const { w, h } = this.pond();
-
-    // Dérive : marche aléatoire en unités d'étang. Avec keepNote, elle est
-    // confinée à l'axe perpendiculaire à celui des hauteurs : la note ne change pas.
     const mx = c.edgeMargin / w;
     const my = c.edgeMargin / h;
     const [fx, fy] = this.freeAxes();
     s.x = Math.min(1 - mx, Math.max(mx, s.x + (gaussian(this.random) * c.driftAmplitude * fx) / w));
     s.y = Math.min(1 - my, Math.max(my, s.y + (gaussian(this.random) * c.driftAmplitude * fy) / h));
+  }
+
+  /** Un retour de graine : déclin, fusion, engendrement, puis dérive pour le retour suivant. */
+  private pass(s: Seed): DropEvent | null {
+    const c = config.seeds;
+    const t = s.next;
+    const { w, h } = this.pond();
+    const mx = c.edgeMargin / w;
+    const my = c.edgeMargin / h;
+    const [fx, fy] = this.freeAxes();
 
     // Déclin.
     s.volume *= c.volumeDecay;
@@ -191,7 +203,6 @@ export class Seeds {
       const tw = s.volume + o.volume;
       // Barycentre, mais seulement sur les axes libres : avec keepNote, la
       // graine qui joue garde sa bande (sa note), une octave plus bas.
-      const [fx, fy] = this.freeAxes();
       s.x += fx * ((s.x * s.volume + o.x * o.volume) / tw - s.x);
       s.y += fy * ((s.y * s.volume + o.y * o.volume) / tw - s.y);
       s.volume = Math.min(c.mergeVolumeCap, tw);
@@ -231,7 +242,10 @@ export class Seeds {
     }
 
     if (s.lives <= 0 || s.volume < c.minVolume) this.remove(s);
-    else s.next = t + c.loopDuration;
+    else {
+      s.next = t + c.loopDuration;
+      this.drift(s);
+    }
 
     return ev;
   }

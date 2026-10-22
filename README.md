@@ -83,6 +83,18 @@ Chaque goutte posée devient une **graine** :
 
 (Distances en *unités d'étang* : le petit côté de l'écran vaut 1.)
 
+### Repères de boucle
+
+- **Frise** en haut de l'écran : une ligne = une boucle (8 s), avec une
+  graduation par pas de grille. Une barre la parcourt ; chaque goutte en
+  boucle y est un point, placé à l'instant où elle retombe, qui s'illumine
+  quand elle tombe. La frise n'apparaît que s'il y a des gouttes en boucle.
+- **Lueur d'annonce** : 2 s avant chaque retour, un halo monte doucement sous
+  l'eau, là où la goutte va tomber.
+
+Pour que la lueur soit au bon endroit, la dérive est tirée juste après chaque
+chute (pour la suivante), et non au moment de la chute.
+
 ### Sans interaction
 
 Aucune goutte ne tombe d'elle-même : seules les gouttes du joueur (et les
@@ -124,6 +136,8 @@ filtre) dans [`src/engine/moods.ts`](src/engine/moods.ts). Les plus parlantes :
 | `pitch.octaves` | nombre d'octaves, donc de bandes (5 par octave + 1) |
 | `seeds.keepNote` | `false` pour que la dérive fasse muter la mélodie (concept d'origine) |
 | `lanes.*` | visibilité et durée des repères de notes |
+| `timeline.*` | frise de boucle (`enabled: false` pour la masquer) |
+| `omen.*` | lueur d'annonce avant chaque retour (`gain: 0` pour la retirer) |
 | `render.maxPixelRatio`, `water.simShortSide` | performances sur mobile |
 
 Si on change `water.waveSpeed` ou la résolution de simulation, vérifier
@@ -145,6 +159,7 @@ src/
     audio.ts           synthés, réverbération, bus master, vol de voix
     scales.ts          gammes, position → note, note harmonique
     seeds.ts           graines, boucle, dérive, fusion, engendrement
+  timeline.ts          dessin de la frise de boucle
     crossings.ts       détection analytique des croisements
     moods.ts           les trois ambiances
 public/                manifeste, icônes, service worker

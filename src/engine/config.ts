@@ -304,6 +304,36 @@ export const config = {
     speedFactor: 0.94,
   },
 
+  /** Lueur d'annonce : un halo monte sous l'eau là où une goutte va retomber. */
+  omen: {
+    /** Combien de temps avant la chute la lueur commence à monter (s). */
+    lead: 2.0,
+    /** Intensité au moment de la chute (multipliée par le volume de la graine). */
+    gain: 0.16,
+    /** Rayon du halo (unités d'étang). */
+    radius: 0.03,
+  },
+
+  /** Frise de boucle, en haut de l'écran. */
+  timeline: {
+    /** Afficher la frise. */
+    enabled: true,
+    /** Durée d'apparition / disparition (s), quand des graines apparaissent ou s'éteignent toutes. */
+    fade: 1.5,
+    /** Opacité de la ligne de fond. */
+    lineAlpha: 0.14,
+    /** Opacité des graduations (une par pas de grille). */
+    tickAlpha: 0.22,
+    /** Opacité du point qui parcourt la boucle. */
+    headAlpha: 0.75,
+    /** Longueur de la traîne du point (fraction de boucle). */
+    tailLength: 0.12,
+    /** Opacité d'un point de graine (plus le volume restant). */
+    seedAlpha: 0.3,
+    /** Éclat d'un point de graine au moment où elle tombe (s). */
+    seedFlash: 0.8,
+  },
+
   /** Interface. */
   ui: {
     /** Délai avant que le bouton de réglages ne s'estompe (s). */
@@ -323,3 +353,5 @@ export type PitchAxis = 'bas-haut' | 'haut-bas' | 'gauche-droite' | 'droite-gauc
 export const MAX_DROPS_PER_STEP = 16;
 /** Nombre maximal de flashs affichés simultanément (taille du tableau d'uniforms). */
 export const MAX_FLASHES = 16;
+/** Nombre maximal de lueurs d'annonce (au plus une par graine). */
+export const MAX_OMENS = 24;

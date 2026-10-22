@@ -23,6 +23,23 @@ import { Water, type Tier } from './water';
 interface Visual {
   time: number;
   apply: () => void;
+  /** Chute programmée d'une graine : annoncée par une lueur et sur la frise. */
+  fall?: { x: number; y: number; volume: number };
+}
+
+/** Ce qu'affiche la frise de boucle. Les phases vont de 0 à 1 sur une boucle. */
+export interface TimelineState {
+  /** Opacité globale de la frise (0 = cachée). */
+  visibility: number;
+  /** Position du point qui parcourt la boucle. */
+  phase: number;
+  divisions: number;
+  /** Prochaine chute de chaque graine. */
+  dots: { phase: number; volume: number }[];
+  /** Chutes récentes : âge en secondes. */
+  falls: { phase: number; age: number }[];
+  /** Couleur des crêtes de l'ambiance courante (sRGB 0..255). */
+  color: [number, number, number];
 }
 
 export class Pond {
@@ -41,6 +58,9 @@ export class Pond {
   private fromLook: MoodLook;
   private moodStart = -Infinity;
   private now = 0;
+  private recentFalls: { time: number; phase: number }[] = [];
+  private timelineVisibility = 0;
+  private timelineLast = 0;
   /** Dernier toucher (pour l'apparition des repères de notes). */
   private lastTap = -Infinity;
   private activeLane = -1;
@@ -106,6 +126,7 @@ export class Pond {
     this.flushVisuals(now);
     this.updateMood(now);
     this.updateLanes(now);
+    this.updateOmens(now);
     this.water.frame(now);
   }
 
@@ -127,6 +148,7 @@ export class Pond {
     this.seeds.clear();
     this.crossings.clear();
     this.visuals = [];
+    this.recentFalls = [];
     this.water.settle(config.water.settleDuration);
     this.audio.releaseAll(config.water.settleDuration * 0.6);
   }
@@ -167,9 +189,10 @@ export class Pond {
     const apply = () => {
       this.water.drop(ev.x, ev.y, strength * (1 + ev.level * 0.25), size);
       this.water.flash(ev.x, ev.y, Math.pow(ev.volume, 0.7));
+      this.recentFalls.push({ time: ev.time, phase: this.phaseOf(ev.time) });
     };
     if (immediate) apply();
-    else this.visuals.push({ time: ev.time, apply });
+    else this.visuals.push({ time: ev.time, apply, fall: { x: ev.x, y: ev.y, volume: ev.volume } });
   }
 
   private handleCrossing(ev: CrossingEvent): void {
@@ -202,6 +225,50 @@ export class Pond {
     this.visuals = this.visuals.filter((v) => v.time > now);
     due.sort((a, b) => a.time - b.time);
     for (const v of due) v.apply();
+  }
+
+  /** Position d'un instant dans la boucle (0..1). */
+  private phaseOf(t: number): number {
+    const L = config.seeds.loopDuration;
+    return (((t % L) + L) % L) / L;
+  }
+
+  /** Halo sous l'eau là où chaque graine va retomber, qui monte avant la chute. */
+  private updateOmens(now: number): void {
+    const o = config.omen;
+    const omens: { x: number; y: number; intensity: number }[] = [];
+    const push = (x: number, y: number, volume: number, time: number) => {
+      const a = Math.min(1, Math.max(0, 1 - (time - now) / o.lead));
+      if (a > 0) omens.push({ x, y, intensity: o.gain * volume * a * a * (3 - 2 * a) });
+    };
+    for (const s of this.seeds.snapshot) push(s.x, s.y, s.volume, s.next);
+    for (const v of this.visuals) if (v.fall) push(v.fall.x, v.fall.y, v.fall.volume, v.time);
+    this.water.setOmens(omens);
+  }
+
+  /** État de la frise de boucle, à dessiner par l'interface. */
+  timeline(): TimelineState {
+    const now = this.now;
+    const t = config.timeline;
+    const dots: { phase: number; volume: number }[] = [];
+    for (const s of this.seeds.snapshot) dots.push({ phase: this.phaseOf(s.next), volume: s.volume });
+    for (const v of this.visuals) if (v.fall) dots.push({ phase: this.phaseOf(v.time), volume: v.fall.volume });
+    this.recentFalls = this.recentFalls.filter((f) => now - f.time < t.seedFlash * 4);
+    // Apparition / disparition douce, selon qu'il y a des graines.
+    const target = dots.length > 0 ? 1 : 0;
+    const dt = Math.min(Math.max(now - this.timelineLast, 0), 0.1);
+    this.timelineLast = now;
+    const step = dt / Math.max(t.fade, 0.01);
+    this.timelineVisibility += Math.sign(target - this.timelineVisibility) * Math.min(step, Math.abs(target - this.timelineVisibility));
+    const c = this.palette.crest.map((v) => Math.round(Math.pow(Math.min(Math.max(v, 0), 1), 1 / 2.2) * 255));
+    return {
+      visibility: t.enabled ? this.timelineVisibility : 0,
+      phase: this.phaseOf(now),
+      divisions: config.seeds.gridDivisions,
+      dots,
+      falls: this.recentFalls.map((f) => ({ phase: f.phase, age: now - f.time })),
+      color: [c[0] ?? 200, c[1] ?? 210, c[2] ?? 230],
+    };
   }
 
   /** Les repères apparaissent au toucher, restent un instant, puis s'effacent. */

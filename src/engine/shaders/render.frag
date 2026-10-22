@@ -45,6 +45,8 @@ uniform float uLaneAlpha;    // 0 = invisibles
 uniform float uLaneActive;   // bande touchée (−1 : aucune)
 uniform float uLaneTonic;    // une bande « maison » toutes les N (5 en pentatonique)
 uniform vec3 uLaneGains;     // x = traits, y = bandes maison, z = bande touchée
+uniform int uOmenCount;
+uniform vec4 uOmens[MAX_OMENS];       // xy = position (unités d'étang), z = intensité, w = rayon
 uniform vec4 uFlashShape;             // x = rayon, y = croissance, z = décroissance, w = attaque
 
 in vec2 vUv;
@@ -109,6 +111,15 @@ void main() {
     float r = (uFlashShape.x + uFlashShape.y * age) * st.x;
     float d = length(wp - f.xy) / r;
     col += mix(uFlashColor, uMoon, st.z) * f.w * env * exp(-d * d);
+  }
+
+  // Lueurs d'annonce : halos sous l'eau là où une goutte va retomber.
+  // La pente les déforme légèrement, comme une lumière vue à travers l'eau.
+  for (int i = 0; i < MAX_OMENS; i++) {
+    if (i >= uOmenCount) break;
+    vec4 o = uOmens[i];
+    float d = length(wp + nh.xy * 0.004 - o.xy) / o.w;
+    col += uCrest * o.z * exp(-d * d);
   }
 
   // Repères de notes : traits fins entre les bandes, bandes « maison » et

@@ -4,6 +4,7 @@
   import { config } from './engine/config';
   import { moods, moodIds, type MoodId } from './engine/moods';
   import { loadSettings, saveSettings } from './settings';
+  import { drawTimeline } from './timeline';
 
   const params = new URLSearchParams(location.search);
   const debug = params.has('debug');
@@ -14,6 +15,7 @@
   const initial = loadSettings();
 
   let canvas: HTMLCanvasElement;
+  let timelineCanvas: HTMLCanvasElement;
   let pond: Pond | null = null;
 
   let unsupported = $state(false);
@@ -55,9 +57,19 @@
     p.setVolume(volume);
     applyBackground(mood);
 
+    const tctx = timelineCanvas.getContext('2d');
+    let tlW = 1;
+    let tlH = 1;
     const resize = () => {
       const r = canvas.getBoundingClientRect();
-      p.resize(r.width, r.height, window.devicePixelRatio || 1);
+      const dpr = window.devicePixelRatio || 1;
+      p.resize(r.width, r.height, dpr);
+      const tr = timelineCanvas.getBoundingClientRect();
+      tlW = Math.max(1, tr.width);
+      tlH = Math.max(1, tr.height);
+      timelineCanvas.width = Math.round(tlW * dpr);
+      timelineCanvas.height = Math.round(tlH * dpr);
+      tctx?.setTransform(dpr, 0, 0, dpr, 0, 0);
     };
     resize();
     unsupported = !p.ready;
@@ -83,6 +95,7 @@
     const loop = () => {
       raf = requestAnimationFrame(loop);
       p.frame();
+      if (tctx) drawTimeline(tctx, tlW, tlH, p.timeline());
       if (debug) {
         frames++;
         const n = performance.now();
@@ -154,11 +167,14 @@
 </script>
 
 <canvas
+  class="water"
   bind:this={canvas}
   onpointerdown={onPointerDown}
   oncontextmenu={(e) => e.preventDefault()}
   style:--fade="{config.ui.fade}s"
 ></canvas>
+
+<div class="timeline" aria-hidden="true"><canvas bind:this={timelineCanvas}></canvas></div>
 
 {#if unsupported}
   <p class="message">Cet appareil ne permet pas d'afficher l'étang (WebGL2 indisponible).</p>
@@ -234,7 +250,7 @@
 {/if}
 
 <style>
-  canvas {
+  .water {
     position: absolute;
     inset: 0;
     width: 100%;
@@ -242,6 +258,21 @@
     display: block;
     touch-action: none;
     cursor: default;
+  }
+
+  /* Frise de boucle : en haut, sous l'encoche ; elle ne capte aucun toucher. */
+  .timeline {
+    position: absolute;
+    top: calc(env(safe-area-inset-top) + 10px);
+    left: max(16px, env(safe-area-inset-left));
+    right: max(16px, env(safe-area-inset-right));
+    height: 18px;
+    pointer-events: none;
+  }
+  .timeline canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
   }
 
   .message {
@@ -436,7 +467,7 @@
 
   .debug {
     position: absolute;
-    top: max(8px, env(safe-area-inset-top));
+    top: calc(env(safe-area-inset-top) + 32px);
     left: 8px;
     font: 11px ui-monospace, monospace;
     opacity: 0.5;
