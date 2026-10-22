@@ -37,6 +37,14 @@ uniform float uDither;
 uniform int uFlashCount;
 uniform vec4 uFlashes[MAX_FLASHES];   // xy = position (unités d'étang), z = âge (s), w = intensité
 uniform vec4 uFlashStyles[MAX_FLASHES]; // x = échelle de rayon, y = échelle de durée, z = teinte lune
+
+// Repères de notes : u = dot(uLaneDir.xy, (x, y écran)) + uLaneDir.z, de 0 (grave) à 1 (aigu).
+uniform vec3 uLaneDir;
+uniform float uLaneCount;
+uniform float uLaneAlpha;    // 0 = invisibles
+uniform float uLaneActive;   // bande touchée (−1 : aucune)
+uniform float uLaneTonic;    // une bande « maison » toutes les N (5 en pentatonique)
+uniform vec3 uLaneGains;     // x = traits, y = bandes maison, z = bande touchée
 uniform vec4 uFlashShape;             // x = rayon, y = croissance, z = décroissance, w = attaque
 
 in vec2 vUv;
@@ -101,6 +109,23 @@ void main() {
     float r = (uFlashShape.x + uFlashShape.y * age) * st.x;
     float d = length(wp - f.xy) / r;
     col += mix(uFlashColor, uMoon, st.z) * f.w * env * exp(-d * d);
+  }
+
+  // Repères de notes : traits fins entre les bandes, bandes « maison » et
+  // bande touchée légèrement éclairées. Ils suivent un peu la surface (la
+  // pente les déforme), comme un reflet sous l'eau.
+  if (uLaneAlpha > 0.001) {
+    vec2 sp = vec2(vUv.x, 1.0 - vUv.y) + nh.xy * 0.0015;
+    float u = dot(uLaneDir.xy, sp) + uLaneDir.z;
+    float f = u * uLaneCount;
+    float lane = floor(f);
+    float d = abs(fract(f + 0.5) - 0.5);
+    float line = 1.0 - smoothstep(0.0, fwidth(f) * 1.2, d);
+    line *= step(0.5, f) * step(f, uLaneCount - 0.5); // pas de trait sur les bords de l'écran
+    float tonic = 1.0 - step(0.5, mod(lane, uLaneTonic));
+    float touched = 1.0 - step(0.5, abs(lane - uLaneActive));
+    float glow = line * uLaneGains.x + tonic * uLaneGains.y + touched * uLaneGains.z;
+    col += uCrest * glow * uLaneAlpha;
   }
 
   // Vignette douce (le centre de l'étang est légèrement plus présent).

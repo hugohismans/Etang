@@ -16,7 +16,7 @@ import { Clock } from './clock';
 import { config } from './config';
 import { Crossings, type CrossingEvent } from './crossings';
 import { lerpLook, lerpPalette, moods, type MoodId, type MoodLook, type Palette } from './moods';
-import { harmonicAbove, positionToMidi } from './scales';
+import { harmonicAbove, laneCount, pitchAxisCoefficients, positionToDegree, positionToMidi } from './scales';
 import { Seeds, type DropEvent } from './seeds';
 import { Water, type Tier } from './water';
 
@@ -41,6 +41,9 @@ export class Pond {
   private fromLook: MoodLook;
   private moodStart = -Infinity;
   private now = 0;
+  /** Dernier toucher (pour l'apparition des repères de notes). */
+  private lastTap = -Infinity;
+  private activeLane = -1;
 
   constructor(canvas: HTMLCanvasElement, mood: MoodId, options: { forceTier?: Tier } = {}) {
     const m = moods[mood];
@@ -86,6 +89,8 @@ export class Pond {
       this.seeds.clear();
     }
     const ev = this.seeds.tap(x, y, this.now);
+    this.lastTap = this.now;
+    this.activeLane = positionToDegree(moods[this.moodId].scale, x, y);
     this.handleDrop(ev, true);
   }
 
@@ -100,6 +105,7 @@ export class Pond {
     }
     this.flushVisuals(now);
     this.updateMood(now);
+    this.updateLanes(now);
     this.water.frame(now);
   }
 
@@ -196,6 +202,27 @@ export class Pond {
     this.visuals = this.visuals.filter((v) => v.time > now);
     due.sort((a, b) => a.time - b.time);
     for (const v of due) v.apply();
+  }
+
+  /** Les repères apparaissent au toucher, restent un instant, puis s'effacent. */
+  private updateLanes(now: number): void {
+    const l = config.lanes;
+    const scale = moods[this.moodId].scale;
+    const age = now - this.lastTap;
+    let alpha = 0;
+    if (age >= 0 && age < l.attack) alpha = age / l.attack;
+    else if (age < l.attack + l.hold) alpha = 1;
+    else if (age < l.attack + l.hold + l.fade) {
+      const x = 1 - (age - l.attack - l.hold) / l.fade;
+      alpha = x * x * (3 - 2 * x);
+    }
+    this.water.lanes = {
+      dir: pitchAxisCoefficients(config.pitch.axis),
+      count: laneCount(scale),
+      alpha,
+      active: this.activeLane,
+      tonic: scale.intervals.length,
+    };
   }
 
   private updateMood(now: number): void {

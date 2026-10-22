@@ -98,6 +98,15 @@ export class Water {
   /** Réglages visuels de l'ambiance (multiplient config.surface). */
   look = { rippleScale: 1, moonScale: 1 };
 
+  /** Repères de notes (voir render.frag). dir = null : pas de repères. */
+  lanes: { dir: [number, number, number] | null; count: number; alpha: number; active: number; tonic: number } = {
+    dir: null,
+    count: 1,
+    alpha: 0,
+    active: -1,
+    tonic: 5,
+  };
+
   /** Appelé quand le contexte est perdu puis restauré (pour information). */
   onContextChange: ((lost: boolean) => void) | null = null;
 
@@ -465,6 +474,14 @@ export class Water {
     gl.uniform4fv(u.uFlashes ?? null, this.flashBuf);
     gl.uniform4fv(u.uFlashStyles ?? null, this.flashStyleBuf);
     gl.uniform4f(u.uFlashShape ?? null, f.radius, f.growth, f.decay, f.attack);
+    const ln = this.lanes;
+    const lc = config.lanes;
+    gl.uniform3fv(u.uLaneDir ?? null, ln.dir ?? [0, 0, 0]);
+    gl.uniform1f(u.uLaneCount ?? null, ln.count);
+    gl.uniform1f(u.uLaneAlpha ?? null, ln.dir ? ln.alpha : 0);
+    gl.uniform1f(u.uLaneActive ?? null, ln.active);
+    gl.uniform1f(u.uLaneTonic ?? null, ln.tonic);
+    gl.uniform3f(u.uLaneGains ?? null, lc.lineGain, lc.tonicGain, lc.activeGain);
 
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.viewport(0, 0, this.canvas.width, this.canvas.height);

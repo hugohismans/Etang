@@ -18,6 +18,7 @@
  * converties en unités d'étang (petit côté = 1) pour être isotropes.
  */
 import { config } from './config';
+import { pitchAxisCoefficients } from './scales';
 
 export type DropKind = 'tap' | 'seed';
 
@@ -148,17 +149,26 @@ export class Seeds {
     return Math.round(t / step) * step;
   }
 
+  /** Axes sur lesquels une graine peut bouger : [x, y], 1 = libre, 0 = bloqué. */
+  private freeAxes(): [number, number] {
+    const k = pitchAxisCoefficients(config.pitch.axis);
+    if (!config.seeds.keepNote || !k) return [1, 1];
+    return k[0] === 0 ? [1, 0] : [0, 1];
+  }
+
   /** Un retour de graine : dérive, fusion, engendrement, déclin. */
   private pass(s: Seed): DropEvent | null {
     const c = config.seeds;
     const t = s.next;
     const { w, h } = this.pond();
 
-    // Dérive : marche aléatoire isotrope en unités d'étang.
+    // Dérive : marche aléatoire en unités d'étang. Avec keepNote, elle est
+    // confinée à l'axe perpendiculaire à celui des hauteurs : la note ne change pas.
     const mx = c.edgeMargin / w;
     const my = c.edgeMargin / h;
-    s.x = Math.min(1 - mx, Math.max(mx, s.x + (gaussian(this.random) * c.driftAmplitude) / w));
-    s.y = Math.min(1 - my, Math.max(my, s.y + (gaussian(this.random) * c.driftAmplitude) / h));
+    const [fx, fy] = this.freeAxes();
+    s.x = Math.min(1 - mx, Math.max(mx, s.x + (gaussian(this.random) * c.driftAmplitude * fx) / w));
+    s.y = Math.min(1 - my, Math.max(my, s.y + (gaussian(this.random) * c.driftAmplitude * fy) / h));
 
     // Déclin.
     s.volume *= c.volumeDecay;
@@ -179,8 +189,11 @@ export class Seeds {
     if (nearest) {
       const o = nearest;
       const tw = s.volume + o.volume;
-      s.x = (s.x * s.volume + o.x * o.volume) / tw;
-      s.y = (s.y * s.volume + o.y * o.volume) / tw;
+      // Barycentre, mais seulement sur les axes libres : avec keepNote, la
+      // graine qui joue garde sa bande (sa note), une octave plus bas.
+      const [fx, fy] = this.freeAxes();
+      s.x += fx * ((s.x * s.volume + o.x * o.volume) / tw - s.x);
+      s.y += fy * ((s.y * s.volume + o.y * o.volume) / tw - s.y);
       s.volume = Math.min(c.mergeVolumeCap, tw);
       s.level = Math.min(c.maxMergeLevel, Math.max(s.level, o.level) + 1);
       s.lives = Math.max(s.lives, o.lives);
@@ -201,12 +214,14 @@ export class Seeds {
 
     // Engendrement : une fille, plus faible, juste à côté, décalée sur la grille.
     if (this.random() < c.spawnChance && this.seeds.length < c.maxSeeds) {
-      const a = this.random() * Math.PI * 2;
+      // Avec keepNote, la fille naît à gauche ou à droite (même bande, même note).
+      const a = fx === 1 && fy === 1 ? this.random() * Math.PI * 2 : this.random() < 0.5 ? 0 : Math.PI;
+      const [ox, oy] = fx === 1 && fy === 1 ? [Math.cos(a), Math.sin(a)] : fx === 1 ? [Math.cos(a), 0] : [0, Math.cos(a)];
       const step = c.loopDuration / c.gridDivisions;
       const k = 1 + Math.floor(this.random() * c.spawnMaxOffsetSteps);
       this.add({
-        x: Math.min(1 - mx, Math.max(mx, s.x + (Math.cos(a) * c.spawnDistance) / w)),
-        y: Math.min(1 - my, Math.max(my, s.y + (Math.sin(a) * c.spawnDistance) / h)),
+        x: Math.min(1 - mx, Math.max(mx, s.x + (ox * c.spawnDistance) / w)),
+        y: Math.min(1 - my, Math.max(my, s.y + (oy * c.spawnDistance) / h)),
         volume: s.volume * c.spawnVolume,
         lives: c.spawnLives,
         level: 0,

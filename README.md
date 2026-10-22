@@ -39,9 +39,14 @@ Paramètres d'URL utiles :
 - **Image** : un petit flash, puis une onde qui s'étend à vitesse constante et
   s'éteint en ~6 s. L'onde vit dans une vraie simulation de hauteur d'eau,
   donc les ondes interfèrent d'elles-mêmes.
-- **Hauteur** : fonction de la distance au centre. Centre = tonique grave,
-  bords = deux octaves plus haut, quantifié sur les degrés de la gamme
-  pentatonique de l'ambiance. Rien ne peut sonner faux.
+- **Hauteur** : l'écran est découpé en 11 bandes horizontales, une par note.
+  En bas le plus grave, en haut le plus aigu, sur deux octaves de la gamme
+  pentatonique de l'ambiance. Rien ne peut sonner faux, et toucher la même
+  bande rejoue toujours la même note.
+- **Repères** : à chaque toucher, les bandes apparaissent faiblement sur l'eau
+  puis s'effacent. Celle qu'on vient de toucher s'éclaire un peu plus. Les
+  trois bandes « maison » (la tonique de chaque octave : en bas, au milieu, en
+  haut) sont légèrement éclairées : une phrase qui finit dessus sonne « finie ».
 - **Timbre** : cloche douce. Fondamentale sinus (doublée d'une jumelle
   désaccordée de 3 cents pour un battement lent) et trois partiels
   inharmoniques faibles (×2.76, ×5.40, ×8.93) qui meurent plus vite. Attaque
@@ -71,9 +76,9 @@ Chaque goutte posée devient une **graine** :
 | Retours alignés sur une grille de 1/8 de boucle (le tap, lui, est immédiat) | 1 s |
 | Volume multiplié à chaque passage | × 0,8 |
 | S'éteint après 6 passages, ou sous un volume seuil | 6 / 0,12 |
-| **Dérive** : pas aléatoire gaussien à chaque retour → la note glisse parfois d'un degré | σ = 0,035 |
+| **Dérive** : pas aléatoire gaussien à chaque retour, uniquement de gauche à droite : la goutte bouge, la note reste (`keepNote`) | σ = 0,035 |
 | **Fusion** : deux graines à moins de d fusionnent → onde plus ample, une octave plus bas, volumes additionnés (plafonnés) | d = 0,06 |
-| **Engendrement** : à chaque passage, chance de créer une fille à côté, plus faible (×0,6), 3 vies, décalée de 1 à 3 pas de grille | 5 % |
+| **Engendrement** : à chaque passage, chance de créer une fille à gauche ou à droite (même note, comme un écho), plus faible (×0,6), 3 vies, décalée de 1 à 3 pas de grille | 5 % |
 | Au plus 24 graines ; au-delà, les plus faibles s'éteignent | 24 |
 
 (Distances en *unités d'étang* : le petit côté de l'écran vaut 1.)
@@ -115,7 +120,10 @@ filtre) dans [`src/engine/moods.ts`](src/engine/moods.ts). Les plus parlantes :
 | `seeds.driftAmplitude` | vitesse de mutation de la mélodie |
 | `seeds.mergeDistance`, `spawnChance` | fréquence des fusions et naissances |
 | `crossings.maxPerSecond` | densité des notes harmoniques |
-| `pitch.edgeDistance` | répartition des notes sur l'écran |
+| `pitch.axis` | sens grave → aigu : `'bas-haut'` (défaut), `'gauche-droite'` (comme un piano), `'droite-gauche'`, `'haut-bas'`, `'centre-bords'` (ancien mode) |
+| `pitch.octaves` | nombre d'octaves, donc de bandes (5 par octave + 1) |
+| `seeds.keepNote` | `false` pour que la dérive fasse muter la mélodie (concept d'origine) |
+| `lanes.*` | visibilité et durée des repères de notes |
 | `render.maxPixelRatio`, `water.simShortSide` | performances sur mobile |
 
 Si on change `water.waveSpeed` ou la résolution de simulation, vérifier
@@ -195,10 +203,15 @@ Quand un choix n'était pas couvert, j'ai pris l'option la plus lente et la plus
   les ondes plutôt que de les renvoyer.
 - Les micro-ridules ne touchent **que** le reflet de lune ; la houle de fond
   est presque imperceptible.
-- **Tessiture** : la distance au centre est mesurée dans le repère de l'écran
-  (bords à ±1), pour que chaque bord soit aigu en portrait comme en paysage.
-  La tonique est en Ré 4 / Mi 4 / La 3 : les haut-parleurs de téléphone ne
-  rendent presque rien sous 200 Hz.
+- **Tessiture** : bandes horizontales plutôt que verticales. En portrait, la
+  hauteur de l'écran donne des bandes d'environ 75 px, assez larges pour viser
+  avec le doigt (en largeur, on tomberait sous 40 px). « Haut = aigu » est
+  aussi le sens le plus intuitif. La tonique est en Ré 4 / Mi 4 / La 3 : les
+  haut-parleurs de téléphone ne rendent presque rien sous 200 Hz.
+- **Contrôle avant mutation** : la dérive, les filles et les fusions gardent
+  la bande de la note (une fusion descend seulement d'une octave). La mélodie
+  jouée est donc reconnaissable à chaque retour ; elle ne mute que par
+  l'extinction progressive, les échos et les fusions.
 - **Brume** : l'exemple « Do Ré Mi Sol La avec tonique sur La » est
   exactement la pentatonique mineure de La, donc la même couleur que Nuit.
   J'ai pris la pentatonique *suspendue* (La Si Ré Mi Sol) : sans tierce, ni

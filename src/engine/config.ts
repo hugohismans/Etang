@@ -136,13 +136,34 @@ export const config = {
   /** Hauteur des notes. */
   pitch: {
     /**
-     * Distance (dans le repère de l'écran, coins = √2) à partir de laquelle
-     * on atteint la note la plus aiguë. 1.2 → le milieu des bords est déjà
-     * presque en haut de la tessiture, les coins y sont.
+     * Sens « du grave vers l'aigu » sur l'écran. L'écran est découpé en
+     * bandes égales, une par note de la gamme.
+     *  - 'bas-haut'     : en bas grave, en haut aigu (défaut : en portrait,
+     *                     c'est le grand côté, donc les bandes les plus larges) ;
+     *  - 'haut-bas', 'gauche-droite' (comme un piano), 'droite-gauche' ;
+     *  - 'centre-bords' : ancien mode, grave au centre, aigu vers les bords.
      */
-    edgeDistance: 1.2,
-    /** Étendue, en octaves, du centre au bord. */
+    axis: 'bas-haut' as PitchAxis,
+    /** Étendue, en octaves. Le nombre de bandes est 5 × octaves + 1. */
     octaves: 2,
+    /** Mode 'centre-bords' : distance (repère écran, coins = √2) de la note la plus aiguë. */
+    edgeDistance: 1.2,
+  },
+
+  /** Repères de notes : bandes qui apparaissent sur l'eau quand on touche. */
+  lanes: {
+    /** Montée (s) quand on touche. */
+    attack: 0.15,
+    /** Maintien (s) après le dernier toucher. */
+    hold: 1.2,
+    /** Disparition (s). */
+    fade: 2.5,
+    /** Lumière des traits entre les bandes. */
+    lineGain: 0.05,
+    /** Lumière de fond des bandes « maison » (la tonique de chaque octave). */
+    tonicGain: 0.018,
+    /** Lumière de la bande qu'on vient de toucher. */
+    activeGain: 0.035,
   },
 
   /** Moteur audio. */
@@ -229,6 +250,12 @@ export const config = {
     minVolume: 0.12,
     /** Amplitude de la dérive à chaque retour (écart type, unités d'étang). */
     driftAmplitude: 0.035,
+    /**
+     * true : la dérive (et la position des filles) reste dans la bande de la
+     * note — la mélodie que tu as jouée est conservée, seul l'endroit bouge.
+     * false : la dérive peut faire glisser la note d'un degré (mélodie qui mute).
+     */
+    keepNote: true,
     /** Marge (unités d'étang) que les graines ne franchissent pas en dérivant. */
     edgeMargin: 0.06,
     /** Distance de fusion de deux graines (unités d'étang). */
@@ -289,6 +316,8 @@ export const config = {
 };
 
 export type Config = typeof config;
+
+export type PitchAxis = 'bas-haut' | 'haut-bas' | 'gauche-droite' | 'droite-gauche' | 'centre-bords';
 
 /** Nombre maximal de gouttes injectées dans un même pas (taille du tableau d'uniforms). */
 export const MAX_DROPS_PER_STEP = 16;
