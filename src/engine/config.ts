@@ -51,6 +51,10 @@ export const config = {
     spongeDamping: 0.93,
     /** Nombre maximal de pas de simulation par image (garde-fou sur appareil lent). */
     maxStepsPerFrame: 6,
+    /** Amortissement (fraction restante après 1 s) au plus fort d'un « vider l'étang ». */
+    settleDamping: 0.12,
+    /** Durée du calme après « vider l'étang » (s). */
+    settleDuration: 2.5,
   },
 
   /** Impact d'une goutte dans la simulation. */
@@ -73,8 +77,20 @@ export const config = {
     decay: 0.22,
     /** Temps de montée (s). Une montée de quelques ms évite un « pop » visuel. */
     attack: 0.025,
-    /** Durée après laquelle un flash est retiré de la liste. */
+    /** Durée après laquelle un flash est retiré de la liste (multipliée par l'échelle de durée du flash). */
     lifetime: 1.4,
+  },
+
+  /** Étincelle au point de croisement de deux ondes (relative au flash d'impact). */
+  spark: {
+    /** Intensité au pic. */
+    intensity: 0.75,
+    /** Rayon, relatif au flash d'impact. */
+    radiusScale: 0.45,
+    /** Durée, relative au flash d'impact. */
+    timeScale: 1.6,
+    /** 0 = couleur du flash, 1 = couleur de la lune (plus argentée). */
+    moonTint: 0.7,
   },
 
   /** Éclairage de la surface. */
@@ -115,6 +131,175 @@ export const config = {
     /** Halo large et faible autour du reflet. */
     moonGlowShininess: 40.0,
     moonGlowGain: 0.025,
+  },
+
+  /** Hauteur des notes. */
+  pitch: {
+    /**
+     * Distance (dans le repère de l'écran, coins = √2) à partir de laquelle
+     * on atteint la note la plus aiguë. 1.2 → le milieu des bords est déjà
+     * presque en haut de la tessiture, les coins y sont.
+     */
+    edgeDistance: 1.2,
+    /** Étendue, en octaves, du centre au bord. */
+    octaves: 2,
+  },
+
+  /** Moteur audio. */
+  audio: {
+    /** Volume général par défaut (0..1), modifiable dans le panneau. */
+    defaultVolume: 0.8,
+    /** Nombre maximal de voix simultanées ; au-delà, la plus ancienne est volée. */
+    maxVoices: 24,
+    /** Durée du fondu d'une voix volée (s). Assez long pour ne jamais cliquer. */
+    stealFade: 0.06,
+    /** Temps d'anticipation de la programmation audio (s). Doit dépasser la latence de sortie. */
+    lookahead: 0.25,
+    /** Panoramique maximal (0 = mono, 1 = gauche/droite complets). */
+    panWidth: 0.55,
+    /** Variation aléatoire de vélocité (±, relative). */
+    velocityJitter: 0.15,
+    /** Variation aléatoire d'accordage (±, en cents). */
+    detuneCents: 4,
+    /** Fondu du volume général et des changements d'ambiance (constante de temps, s). */
+    smoothing: 0.08,
+
+    /** Compresseur du bus master : doux, il ne fait que tenir les accumulations. */
+    compressor: { threshold: -20, knee: 18, ratio: 3, attack: 0.02, release: 0.4 },
+    /** Gain avant le limiteur doux (saturation tanh). */
+    limiterDrive: 1.1,
+    /** Gain de sortie après le limiteur. */
+    outputGain: 0.9,
+  },
+
+  /** Synthé de goutte : cloche douce. */
+  bell: {
+    /** Volume de base d'une goutte (avant vélocité). */
+    gain: 0.22,
+    /** Attaque (s). 20 ms : assez court pour être une percussion, assez long pour ne pas cliquer. */
+    attack: 0.02,
+    /** Décroissance de la fondamentale (s, jusqu'à −60 dB environ). Tirée entre min et max. */
+    decayMin: 3.2,
+    decayMax: 5.0,
+    /**
+     * Partiels inharmoniques : rapport de fréquence, gain relatif, durée relative.
+     * Les rapports viennent des modes d'une petite cloche (non entiers → timbre de métal).
+     */
+    partials: [
+      { ratio: 2.76, gain: 0.09, decay: 0.45 },
+      { ratio: 5.4, gain: 0.035, decay: 0.25 },
+      { ratio: 8.93, gain: 0.012, decay: 0.15 },
+    ],
+    /** Légère seconde fondamentale désaccordée : battement lent, son plus vivant (cents). */
+    chorusCents: 3,
+    chorusGain: 0.25,
+  },
+
+  /** Synthé de croisement : plus fin, plus aigu, plus faible. */
+  chime: {
+    gain: 0.075,
+    attack: 0.012,
+    decay: 2.4,
+    /** Un seul partiel discret, harmonique (le croisement est un écho clair, pas une cloche). */
+    partialRatio: 3.0,
+    partialGain: 0.06,
+  },
+
+  /** Réverbération à convolution, réponse impulsionnelle générée (bruit à décroissance exponentielle). */
+  reverb: {
+    /** Pré-délai (s) avant la queue de réverbération. */
+    preDelay: 0.025,
+    /** Assombrissement de la queue : plus grand = aigus qui meurent plus vite que les graves. */
+    damping: 2.4,
+    /** Durée du fondu enchaîné entre deux réverbérations (changement d'ambiance). */
+    crossfade: 3.0,
+  },
+
+  /** Graines : gouttes qui reviennent en boucle et mutent. */
+  seeds: {
+    /** Durée de la boucle (s). */
+    loopDuration: 8,
+    /** Subdivision de la grille temporelle (8 = croches d'une boucle de 8 s). */
+    gridDivisions: 8,
+    /** Nombre de passages avant extinction. */
+    lives: 6,
+    /** Volume multiplié à chaque passage. */
+    volumeDecay: 0.8,
+    /** Volume sous lequel une graine s'éteint. */
+    minVolume: 0.12,
+    /** Amplitude de la dérive à chaque retour (écart type, unités d'étang). */
+    driftAmplitude: 0.035,
+    /** Marge (unités d'étang) que les graines ne franchissent pas en dérivant. */
+    edgeMargin: 0.06,
+    /** Distance de fusion de deux graines (unités d'étang). */
+    mergeDistance: 0.06,
+    /** Volume maximal d'une graine fusionnée. */
+    mergeVolumeCap: 1.25,
+    /** Nombre maximal de fusions successives (chacune descend d'une octave). */
+    maxMergeLevel: 2,
+    /** Agrandissement de l'onde par niveau de fusion. */
+    mergeSizeGain: 0.45,
+    /** Probabilité, à chaque passage, d'engendrer une graine fille. */
+    spawnChance: 0.05,
+    /** Distance de la fille à sa mère (unités d'étang). */
+    spawnDistance: 0.09,
+    /** Volume de la fille, relatif à la mère. */
+    spawnVolume: 0.6,
+    /** Vies de la fille. */
+    spawnLives: 3,
+    /** Décalage de la fille dans la boucle, en pas de grille (tiré entre 1 et ce nombre). */
+    spawnMaxOffsetSteps: 3,
+    /** Nombre maximal de graines vivantes. Au-delà, les plus faibles s'éteignent. */
+    maxSeeds: 24,
+    /** Volume relatif d'un tap (graine au premier passage). */
+    tapVolume: 1.0,
+  },
+
+  /** Pluie fine, quand l'utilisateur ne joue pas. */
+  rain: {
+    /** Intervalle entre deux gouttes de pluie (s), tiré entre min et max. */
+    intervalMin: 10,
+    intervalMax: 20,
+    /** L'étang n'est jamais silencieux plus longtemps que ça (s). */
+    maxSilence: 20,
+    /** Proportion de gouttes de pluie qui deviennent des graines. */
+    seedChance: 0.25,
+    /** Volume d'une goutte de pluie. */
+    volume: 0.45,
+    /** Taille de l'onde d'une goutte de pluie (relative). */
+    size: 0.8,
+  },
+
+  /** Croisements entre fronts d'onde. */
+  crossings: {
+    /** Durée pendant laquelle une onde peut encore croiser une autre (s). */
+    waveLifetime: 6,
+    /** Nombre maximal de croisements joués par seconde. */
+    maxPerSecond: 4,
+    /** Fenêtre glissante du plafond (s). */
+    window: 1,
+    /** Probabilité de choisir la quinte plutôt que l'octave (si la quinte est dans la gamme). */
+    fifthChance: 0.6,
+    /** Volume en fonction de l'âge de l'onde : 1 à la naissance, (1 − fade) en fin de vie. */
+    ageFade: 0.6,
+    /** Seuil de volume en dessous duquel un croisement est muet. */
+    minVolume: 0.08,
+    /**
+     * Facteur correctif sur la vitesse du front (pour caler l'étincelle sur l'image).
+     * La crête visible avance un peu moins vite que la vitesse théorique
+     * (dispersion numérique de la grille) : mesuré ≈ 0.94 × waveSpeed.
+     */
+    speedFactor: 0.94,
+  },
+
+  /** Interface. */
+  ui: {
+    /** Délai avant que le bouton de réglages ne s'estompe (s). */
+    buttonFadeDelay: 3,
+    /** Durée des fondus d'interface (s). */
+    fade: 1.6,
+    /** Durée du fondu d'ambiance (couleurs, son) (s). */
+    moodFade: 4,
   },
 };
 

@@ -36,6 +36,7 @@ uniform float uDither;
 
 uniform int uFlashCount;
 uniform vec4 uFlashes[MAX_FLASHES];   // xy = position (unités d'étang), z = âge (s), w = intensité
+uniform vec4 uFlashStyles[MAX_FLASHES]; // x = échelle de rayon, y = échelle de durée, z = teinte lune
 uniform vec4 uFlashShape;             // x = rayon, y = croissance, z = décroissance, w = attaque
 
 in vec2 vUv;
@@ -94,11 +95,12 @@ void main() {
   for (int i = 0; i < MAX_FLASHES; i++) {
     if (i >= uFlashCount) break;
     vec4 f = uFlashes[i];
+    vec4 st = uFlashStyles[i];
     float age = f.z;
-    float env = (1.0 - exp(-age / uFlashShape.w)) * exp(-age / uFlashShape.z);
-    float r = uFlashShape.x + uFlashShape.y * age;
+    float env = (1.0 - exp(-age / (uFlashShape.w * st.y))) * exp(-age / (uFlashShape.z * st.y));
+    float r = (uFlashShape.x + uFlashShape.y * age) * st.x;
     float d = length(wp - f.xy) / r;
-    col += uFlashColor * f.w * env * exp(-d * d);
+    col += mix(uFlashColor, uMoon, st.z) * f.w * env * exp(-d * d);
   }
 
   // Vignette douce (le centre de l'étang est légèrement plus présent).

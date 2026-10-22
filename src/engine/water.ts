@@ -15,6 +15,16 @@ import { config, MAX_DROPS_PER_STEP, MAX_FLASHES } from './config';
 import { createProgram, createTarget, deleteTarget, type Program, type Target, type TexFormat } from './gl';
 import type { Palette } from './moods';
 
+/** Forme d'un flash (relative au flash d'impact de config.flash). */
+export interface FlashStyle {
+  radiusScale: number;
+  timeScale: number;
+  /** 0 = couleur de flash de la palette, 1 = couleur de la lune. */
+  tint: number;
+}
+
+const IMPACT: FlashStyle = { radiusScale: 1, timeScale: 1, tint: 0 };
+
 import vertSrc from './shaders/fullscreen.vert?raw';
 import encodingSrc from './shaders/encoding.glsl?raw';
 import noiseSrc from './shaders/noise.glsl?raw';
@@ -39,6 +49,7 @@ interface Flash {
   py: number;
   born: number;
   intensity: number;
+  style: FlashStyle;
 }
 
 export type Tier = 'f32' | 'f16' | 'packed';
@@ -79,6 +90,13 @@ export class Water {
 
   private readonly dropBuf = new Float32Array(MAX_DROPS_PER_STEP * 4);
   private readonly flashBuf = new Float32Array(MAX_FLASHES * 4);
+  private readonly flashStyleBuf = new Float32Array(MAX_FLASHES * 4);
+  /** Amortissement supplémentaire temporaire (« vider l'étang ») : fin et durée. */
+  private settleUntil = -1;
+  private settleDuration = 1;
+
+  /** Réglages visuels de l'ambiance (multiplient config.surface). */
+  look = { rippleScale: 1, moonScale: 1 };
 
   /** Appelé quand le contexte est perdu puis restauré (pour information). */
   onContextChange: ((lost: boolean) => void) | null = null;
@@ -116,13 +134,22 @@ export class Water {
   }
 
   /** Allume un flash lumineux. Même repère que `drop`. */
-  flash(x: number, y: number, intensity = 1): void {
+  flash(x: number, y: number, intensity = 1, style: FlashStyle = IMPACT): void {
     const { w, h } = this.pondSize;
-    this.flashes.push({ px: (x - 0.5) * w, py: (0.5 - y) * h, born: this.time, intensity });
+    this.flashes.push({ px: (x - 0.5) * w, py: (0.5 - y) * h, born: this.time, intensity, style });
     if (this.flashes.length > MAX_FLASHES) this.flashes.shift();
   }
 
-  /** Vide l'étang : toutes les ondes disparaissent. */
+  /**
+   * Calme l'eau en douceur : pendant `seconds`, l'amortissement est fortement
+   * augmenté, puis revient progressivement à la normale.
+   */
+  settle(seconds: number): void {
+    this.settleUntil = this.time + seconds;
+    this.settleDuration = Math.max(seconds, 0.01);
+  }
+
+  /** Remet instantanément l'eau à plat (réallocation, contexte restauré). */
   calm(): void {
     const gl = this.gl;
     if (!gl || !this.state || !this.progClear) return;
@@ -164,7 +191,15 @@ export class Water {
     const c2 = Math.min(Math.max(wc.courant2, 0.01), 0.74);
     // Le front avance de √c² cellule par pas (vitesse de phase aux grandes longueurs d'onde).
     const stepsPerSecond = (wc.waveSpeed * this.simShort) / Math.sqrt(c2);
-    const dampPerStep = Math.pow(Math.min(Math.max(wc.damping, 0), 1), 1 / stepsPerSecond);
+    let damping = Math.min(Math.max(wc.damping, 0), 1);
+    if (this.time < this.settleUntil) {
+      // Pendant un « vider l'étang », l'amortissement passe à settleDamping
+      // puis revient à la normale selon une courbe en S (x : 1 → 0).
+      const x = (this.settleUntil - this.time) / this.settleDuration;
+      const weight = x * x * (3 - 2 * x);
+      damping = damping + (wc.settleDamping - damping) * weight;
+    }
+    const dampPerStep = Math.pow(damping, 1 / stepsPerSecond);
 
     this.acc += dt * stepsPerSecond;
     let steps = Math.floor(this.acc);
@@ -368,7 +403,7 @@ export class Water {
     // Le bruit tourne dans une fenêtre de temps bornée pour garder la précision float.
     gl.uniform1f(u.uTime ?? null, this.time % 10000);
     gl.uniform1f(u.uPondPerCell ?? null, 1 / this.simShort);
-    gl.uniform1f(u.uRippleNormal ?? null, s.rippleNormal);
+    gl.uniform1f(u.uRippleNormal ?? null, s.rippleNormal * this.look.rippleScale);
     gl.uniform1f(u.uSwellScale ?? null, s.swellScale);
     gl.uniform1f(u.uSwellSpeed ?? null, s.swellSpeed);
     gl.uniform1f(u.uSwellStrength ?? null, s.swellStrength);
@@ -388,12 +423,15 @@ export class Water {
     const pal = this.palette;
     const { w, h } = this.pondSize;
 
-    this.flashes = this.flashes.filter((fl) => this.time - fl.born < f.lifetime);
+    this.flashes = this.flashes.filter((fl) => this.time - fl.born < f.lifetime * fl.style.timeScale);
     this.flashes.forEach((fl, i) => {
       this.flashBuf[i * 4] = fl.px;
       this.flashBuf[i * 4 + 1] = fl.py;
       this.flashBuf[i * 4 + 2] = this.time - fl.born;
       this.flashBuf[i * 4 + 3] = fl.intensity * f.intensity;
+      this.flashStyleBuf[i * 4] = fl.style.radiusScale;
+      this.flashStyleBuf[i * 4 + 1] = fl.style.timeScale;
+      this.flashStyleBuf[i * 4 + 2] = fl.style.tint;
     });
 
     gl.useProgram(p.program);
@@ -417,14 +455,15 @@ export class Water {
     gl.uniform1f(u.uCamHeight ?? null, s.cameraHeight);
     gl.uniform3fv(u.uMoonDir ?? null, s.moonDirection);
     gl.uniform1f(u.uMoonShininess ?? null, s.moonShininess);
-    gl.uniform1f(u.uMoonGain ?? null, s.moonGain);
+    gl.uniform1f(u.uMoonGain ?? null, s.moonGain * this.look.moonScale);
     gl.uniform1f(u.uMoonGlowShininess ?? null, s.moonGlowShininess);
-    gl.uniform1f(u.uMoonGlowGain ?? null, s.moonGlowGain);
+    gl.uniform1f(u.uMoonGlowGain ?? null, s.moonGlowGain * this.look.moonScale);
     gl.uniform1f(u.uVignette ?? null, config.render.vignette);
     gl.uniform1f(u.uExposure ?? null, config.render.exposure);
     gl.uniform1f(u.uDither ?? null, config.render.dither);
     gl.uniform1i(u.uFlashCount ?? null, this.flashes.length);
     gl.uniform4fv(u.uFlashes ?? null, this.flashBuf);
+    gl.uniform4fv(u.uFlashStyles ?? null, this.flashStyleBuf);
     gl.uniform4f(u.uFlashShape ?? null, f.radius, f.growth, f.decay, f.attack);
 
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
