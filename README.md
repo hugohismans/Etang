@@ -80,9 +80,8 @@ Chaque goutte posée devient une **graine** :
 
 ### Sans interaction
 
-Quand aucune graine de l'utilisateur n'est active, une **pluie fine** prend le
-relais : une goutte au hasard toutes les 10 à 20 s, plus faible et plus petite.
-Une sur quatre devient une graine. L'étang n'est jamais silencieux plus de 20 s.
+Aucune goutte ne tombe d'elle-même : seules les gouttes du joueur (et les
+graines qu'elles engendrent) existent. Sans toucher, l'étang finit par se taire.
 
 ### Ambiances
 
@@ -116,7 +115,6 @@ filtre) dans [`src/engine/moods.ts`](src/engine/moods.ts). Les plus parlantes :
 | `seeds.driftAmplitude` | vitesse de mutation de la mélodie |
 | `seeds.mergeDistance`, `spawnChance` | fréquence des fusions et naissances |
 | `crossings.maxPerSecond` | densité des notes harmoniques |
-| `rain.intervalMin/Max`, `maxSilence` | présence de la pluie |
 | `pitch.edgeDistance` | répartition des notes sur l'écran |
 | `render.maxPixelRatio`, `water.simShortSide` | performances sur mobile |
 
@@ -138,7 +136,7 @@ src/
     shaders/           GLSL : simulation, normales, rendu, utilitaires
     audio.ts           synthés, réverbération, bus master, vol de voix
     scales.ts          gammes, position → note, note harmonique
-    seeds.ts           graines, boucle, dérive, fusion, engendrement, pluie
+    seeds.ts           graines, boucle, dérive, fusion, engendrement
     crossings.ts       détection analytique des croisements
     moods.ts           les trois ambiances
 public/                manifeste, icônes, service worker
@@ -215,8 +213,6 @@ Quand un choix n'était pas couvert, j'ai pris l'option la plus lente et la plus
   naissance s'entende comme une nouvelle voix et non comme un doublon.
 - **Croisements** : volume = moyenne géométrique des deux ondes, atténué avec
   l'âge de l'onde la plus ancienne ; un croisement hors de l'écran est muet.
-- **Pluie** : quand l'utilisateur joue, elle ne tombe que si 20 s s'écoulent
-  sans aucun son (en pratique jamais : les graines rebouclent toutes les 8 s).
 - **Vider l'étang** : rien ne coupe net. L'eau est fortement amortie pendant
   2,5 s puis revient à la normale, les notes en cours s'éteignent en 1,5 s.
 - **Panneau** : le bouton estompé reste cliquable à sa place. Quand le panneau

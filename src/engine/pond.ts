@@ -3,7 +3,7 @@
  *
  * Boucle par image :
  *   1. temps courant `now` (dérivé de l'AudioContext quand il tourne) ;
- *   2. graines et pluie → impacts jusqu'à `now + lookahead` ;
+ *   2. graines → impacts jusqu'à `now + lookahead` ;
  *      chaque impact est programmé dans l'audio à son instant exact, déclare
  *      une onde aux croisements, et son image est mise en file d'attente ;
  *   3. croisements → notes harmoniques et étincelles, même principe ;
@@ -83,7 +83,7 @@ export class Pond {
     this.unlockAudio();
     if (!this.started) {
       this.started = true;
-      this.seeds.clear(this.now);
+      this.seeds.clear();
     }
     const ev = this.seeds.tap(x, y, this.now);
     this.handleDrop(ev, true);
@@ -118,7 +118,7 @@ export class Pond {
 
   /** Vider l'étang : graines effacées, ondes et sons qui s'éteignent en douceur. */
   clear(): void {
-    this.seeds.clear(this.now);
+    this.seeds.clear();
     this.crossings.clear();
     this.visuals = [];
     this.water.settle(config.water.settleDuration);
@@ -177,7 +177,6 @@ export class Pond {
         pan: (ev.x - 0.5) * 2,
       });
     }
-    this.seeds.noteSound(ev.time);
     const sp = config.spark;
     this.visuals.push({
       time: ev.time,

@@ -1,7 +1,7 @@
 /**
  * Graines : chaque goutte posée revient en boucle et mute lentement.
  *
- * Règles (toutes les constantes sont dans config.seeds / config.rain) :
+ * Règles (toutes les constantes sont dans config.seeds) :
  *  - une graine retombe toutes les `loopDuration` secondes, à sa propre phase
  *    (l'instant où elle a été posée), alignée sur une grille de 1/8 de boucle ;
  *  - à chaque retour : son volume baisse, elle perd une vie, et sa position
@@ -9,15 +9,17 @@
  *    la position, la mélodie glisse parfois d'un degré ;
  *  - deux graines trop proches fusionnent : une seule graine plus grosse,
  *    une octave plus bas, volumes additionnés puis plafonnés ;
- *  - petite chance d'engendrer une graine fille, plus faible, à côté ;
- *  - sans graine de l'utilisateur, une pluie fine prend le relais.
+ *  - petite chance d'engendrer une graine fille, plus faible, à côté.
+ *
+ * Seules les gouttes du joueur (et leurs descendantes) existent : aucune
+ * goutte ne tombe d'elle-même.
  *
  * Les positions sont en coordonnées écran [0, 1] ; les distances sont
  * converties en unités d'étang (petit côté = 1) pour être isotropes.
  */
 import { config } from './config';
 
-export type DropKind = 'tap' | 'seed' | 'spawn' | 'rain';
+export type DropKind = 'tap' | 'seed';
 
 export interface DropEvent {
   /** Instant de l'impact (temps d'horloge). */
@@ -44,8 +46,6 @@ interface Seed {
   level: number;
   /** Prochain passage (temps d'horloge, sur la grille). */
   next: number;
-  /** Lignée : les graines de l'utilisateur (et leurs filles) suspendent la pluie. */
-  origin: 'user' | 'rain';
   size: number;
 }
 
@@ -61,15 +61,12 @@ function gaussian(random: Random): number {
 export class Seeds {
   private seeds: Seed[] = [];
   private nextId = 1;
-  private lastSound = 0;
-  private rainGap = 0;
   private readonly pond: () => { w: number; h: number };
   private readonly random: Random;
 
   constructor(pond: () => { w: number; h: number }, random: Random = Math.random) {
     this.pond = pond;
     this.random = random;
-    this.rollRainGap();
   }
 
   /** Nombre de graines vivantes. */
@@ -77,26 +74,14 @@ export class Seeds {
     return this.seeds.length;
   }
 
-  /** Une graine issue de l'utilisateur est-elle encore vivante ? */
-  get userActive(): boolean {
-    return this.seeds.some((s) => s.origin === 'user');
-  }
-
   /** Positions des graines (affichage de debug). */
   get snapshot(): ReadonlyArray<Readonly<Seed>> {
     return this.seeds;
   }
 
-  /** Signale qu'un son vient d'être joué (pour la règle « jamais de long silence »). */
-  noteSound(t: number): void {
-    if (t > this.lastSound) this.lastSound = t;
-  }
-
   /** Repart de zéro (démarrage, ou « vider l'étang »). */
-  clear(now: number): void {
+  clear(): void {
     this.seeds = [];
-    this.lastSound = now;
-    this.rollRainGap();
   }
 
   /** Un toucher : impact immédiat, et une nouvelle graine qui reviendra sur la grille. */
@@ -109,15 +94,13 @@ export class Seeds {
       lives: c.lives,
       level: 0,
       next: this.gridAfter(now + c.loopDuration),
-      origin: 'user',
       size: 1,
     });
-    this.noteSound(now);
     return { time: now, x, y, volume: c.tapVolume, level: 0, size: 1, kind: 'tap', merged: false };
   }
 
   /**
-   * Fait avancer les graines et la pluie : renvoie tous les impacts dont
+   * Fait avancer les graines : renvoie tous les impacts dont
    * l'instant tombe avant `horizon` (programmation anticipée pour l'audio).
    */
   update(now: number, horizon: number): DropEvent[] {
@@ -137,8 +120,6 @@ export class Seeds {
       const ev = this.pass(s);
       if (ev) events.push(ev);
     }
-    const rain = this.maybeRain(now, horizon);
-    if (rain) events.push(rain);
     return events;
   }
 
@@ -203,7 +184,6 @@ export class Seeds {
       s.volume = Math.min(c.mergeVolumeCap, tw);
       s.level = Math.min(c.maxMergeLevel, Math.max(s.level, o.level) + 1);
       s.lives = Math.max(s.lives, o.lives);
-      if (o.origin === 'user') s.origin = 'user';
       this.remove(o);
       merged = true;
     }
@@ -231,7 +211,6 @@ export class Seeds {
         lives: c.spawnLives,
         level: 0,
         next: t + k * step,
-        origin: s.origin,
         size: s.size,
       });
     }
@@ -239,46 +218,6 @@ export class Seeds {
     if (s.lives <= 0 || s.volume < c.minVolume) this.remove(s);
     else s.next = t + c.loopDuration;
 
-    this.noteSound(t);
     return ev;
-  }
-
-  private rollRainGap(): void {
-    const r = config.rain;
-    this.rainGap = r.intervalMin + this.random() * (r.intervalMax - r.intervalMin);
-  }
-
-  /**
-   * Pluie fine : si aucune graine de l'utilisateur n'est active et que le
-   * silence dure depuis `rainGap`, une goutte tombe au hasard. Garde-fou :
-   * jamais plus de `maxSilence` secondes sans aucun son.
-   */
-  private maybeRain(now: number, horizon: number): DropEvent | null {
-    const r = config.rain;
-    const silence = now - this.lastSound;
-    const due = this.userActive ? silence >= r.maxSilence : silence >= Math.min(this.rainGap, r.maxSilence);
-    if (!due) return null;
-    const c = config.seeds;
-    const { w, h } = this.pond();
-    const mx = (c.edgeMargin * 2) / w;
-    const my = (c.edgeMargin * 2) / h;
-    const x = mx + this.random() * (1 - 2 * mx);
-    const y = my + this.random() * (1 - 2 * my);
-    const t = horizon - 0.01;
-    if (this.random() < r.seedChance) {
-      this.add({
-        x,
-        y,
-        volume: r.volume,
-        lives: c.lives,
-        level: 0,
-        next: this.gridAfter(t + c.loopDuration),
-        origin: 'rain',
-        size: r.size,
-      });
-    }
-    this.noteSound(t);
-    this.rollRainGap();
-    return { time: t, x, y, volume: r.volume, level: 0, size: r.size, kind: 'rain', merged: false };
   }
 }

@@ -194,7 +194,7 @@
         </p>
         <p>
           Quand deux ondes se rencontrent, elles répondent en harmonie. Les gouttes proches fusionnent, d'autres en
-          engendrent de nouvelles. Si tu ne fais rien, une pluie fine continue pour toi.
+          engendrent de nouvelles. Si tu ne fais rien, l'étang finit par retrouver le silence.
         </p>
         <p class="small">Inspiré de <em>Bloom</em> (Brian Eno &amp; Peter Chilvers).</p>
         <button class="link" onclick={() => (aboutOpen = false)}>Retour</button>

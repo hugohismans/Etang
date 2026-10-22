@@ -255,21 +255,6 @@ export const config = {
     tapVolume: 1.0,
   },
 
-  /** Pluie fine, quand l'utilisateur ne joue pas. */
-  rain: {
-    /** Intervalle entre deux gouttes de pluie (s), tiré entre min et max. */
-    intervalMin: 10,
-    intervalMax: 20,
-    /** L'étang n'est jamais silencieux plus longtemps que ça (s). */
-    maxSilence: 20,
-    /** Proportion de gouttes de pluie qui deviennent des graines. */
-    seedChance: 0.25,
-    /** Volume d'une goutte de pluie. */
-    volume: 0.45,
-    /** Taille de l'onde d'une goutte de pluie (relative). */
-    size: 0.8,
-  },
-
   /** Croisements entre fronts d'onde. */
   crossings: {
     /** Durée pendant laquelle une onde peut encore croiser une autre (s). */
